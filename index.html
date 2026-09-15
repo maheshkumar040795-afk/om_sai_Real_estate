@@ -1024,9 +1024,7 @@ document.addEventListener('click', function(e){
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-analytics.js";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-         collection, onSnapshot, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import { getFirestore, collection, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 // Om Sai Real Estate Firebase project config
 const firebaseConfig = {
@@ -1039,10 +1037,11 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-let analytics; try { analytics = getAnalytics(app); } catch(e) { console.warn('Analytics not enabled for this project — skipping.'); }
-const db  = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-});
+// Plain (non-persistent) Firestore client — the persistent multi-tab cache was adding
+// several seconds of IndexedDB lock-negotiation overhead on mobile Chrome/Safari before
+// the first query could even start. This is a public listings page, so we don't need
+// offline persistence badly enough to pay that startup cost.
+const db  = getFirestore(app);
 
 let listings = [];
 let filtered = [];
@@ -1069,19 +1068,9 @@ function showSkeletons() {
 }
 
 function loadListings() {
+  showSkeletons(); // show placeholders immediately instead of a blank grid while data loads
   const q = query(collection(db, 'listings'), orderBy('dateAdded', 'desc'));
 
-  // STEP 1: Load from IndexedDB cache instantly (source: 'cache')
-  getDocs(q).then(snapshot => {
-    if (!snapshot.empty) {
-      listings = snapshot.docs.map(d => ({ id: d.data().customId || d.id, ...d.data() }));
-      applyFilters();
-      updateStats();
-      checkUrlParam();
-    }
-  }).catch(() => {});
-
-  // STEP 2: Live sync from Firestore network (updates UI if data changed)
   onSnapshot(q, (snapshot) => {
     listings = snapshot.docs.map(d => ({ id: d.data().customId || d.id, ...d.data() }));
     applyFilters();
@@ -1089,7 +1078,6 @@ function loadListings() {
     checkUrlParam();
   }, (error) => {
     console.error('Firebase error:', error);
-    // Cache already shown in step 1, so no blank screen
     if (!listings.length) {
       document.getElementById('listingsGrid').innerHTML =
         `<div class="empty-state"><i class="fas fa-wifi"></i><h3>Slow connection</h3><p>Please refresh the page.</p></div>`;
