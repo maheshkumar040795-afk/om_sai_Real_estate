@@ -1,0 +1,6 @@
+# robots.txt — Om Sai Real Estate
+User-agent: *
+Allow: /
+Disallow: /admin.html
+
+Sitemap: https://omsairealestates.co.in/sitemap.xml
